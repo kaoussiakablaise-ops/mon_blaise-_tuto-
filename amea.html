@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Formulaire Multi-Compositions + MGA</title>
+
+<!-- Fonts & libs -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+  :root{
+    --orange:#ff7a00;
+    --green:#1f8a3d;
+    --white:#ffffff;
+    --card-bg: rgba(255,255,255,0.92);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:'Poppins',sans-serif;
+    min-height:100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    background: linear-gradient(135deg, #fff1e6 0%, #ffffff 40%, #eaffef 100%);
+    padding:30px;
+  }
+  .wrapper{
+    width:100%;
+    max-width:1100px;
+    background:var(--card-bg);
+    border-radius:12px;
+    padding:22px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.08);
+    text-align:center;
+  }
+  h1{margin:0 0 12px;color:var(--green)}
+  .steps {
+    display:flex;
+    gap:8px;
+    justify-content:center;
+    margin-bottom:18px;
+    flex-wrap:wrap;
+  }
+  .steps button {
+    background:transparent;border:2px solid var(--orange); color:var(--orange);
+    padding:8px 12px;border-radius:8px;font-weight:600;cursor:pointer;
+  }
+  .card {
+    margin:auto;
+    width:100%;
+    max-width:980px;
+    padding:18px;
+    border-radius:10px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.9));
+    box-shadow:0 6px 18px rgba(0,0,0,0.05);
+  }
+  .stepPage { display:none; }
+  .stepPage.active { display:block; }
+  .row {
+    display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:12px;
+  }
+  .field {
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+  .field input[type="text"], .field input[type="number"], select {
+    padding:10px 12px; width:320px; border-radius:8px; border:1px solid #ddd;
+    font-size:15px; font-family:inherit;
+  }
+  .field.wide input{ width:420px; }
+  label.small{ font-size:13px; color:#444; font-weight:600; }
+  .controls { margin-top:14px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  .btn {
+    padding:10px 14px; border-radius:8px; border:none; cursor:pointer; font-weight:700;
+  }
+  .btn.add{ background:#0b75d1; color:white; }
+  .btn.next{ background:var(--orange); color:white; }
+  .btn.export{ background:var(--green); color:white; }
+  .btn.clear{ background:#777; color:white; }
+  table {
+    width:100%; border-collapse:collapse; margin-top:14px; font-size:14px;
+  }
+  th,td { padding:8px; border:1px solid #e6e6e6; text-align:center; }
+  th { background:var(--orange); color:white; font-weight:700; }
+  .note-small { font-size:13px; color:#666; margin-top:8px; }
+  .center { text-align:center; }
+  @media (max-width:820px){
+    .field input[type="text"], .field input[type="number"] { width:260px; }
+    .field.wide input{ width:260px; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrapper">
+    <h1>Formulaire - 4 Compositions &amp; MGA</h1>
+    <div class="steps">
+      <button onclick="goStep(0)">1ʳᵉ Compo</button>
+      <button onclick="goStep(1)">2ᵉ Compo</button>
+      <button onclick="goStep(2)">3ᵉ Compo</button>
+      <button onclick="goStep(3)">4ᵉ Compo</button>
+      <button onclick="goStep(4)">MGA</button>
+    </div>
+
+    <div class="card">
+      <!-- Pages -->
+      <div id="pageContainer"></div>
+    </div>
+  </div>
+
+<script>
+/* ========= Données en mémoire ========= */
+const data = { compo1: [], compo2: [], compo3: [], compo4: [], MGA: [] };
+
+/* ========= Création dynamique des pages (compo1..4) ========= */
+const pageContainer = document.getElementById('pageContainer');
+
+for(let i=1;i<=4;i++){
+  const div = document.createElement('div');
+  div.className = 'stepPage';
+  div.id = 'compoPage' + i;
+
+  div.innerHTML = `
+    <h2 class="center">${i}ᵉ Composition</h2>
+
+    <div class="row">
+      <div class="field wide">
+        <label class="small">Nom</label>
+        <input type="text" id="nom${i}" placeholder="Nom de l'élève">
+      </div>
+      <div class="field wide">
+        <label class="small">Prénom</label>
+        <input type="text" id="prenom${i}" placeholder="Prénom de l'élève">
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label class="small">Maths (/50)</label>
+        <input type="number" id="math${i}" min="0" max="50" oninput="calcCompo(${i})" step="0.01">
+      </div>
+      <div class="field">
+        <label class="small">Exploitation de texte (/50)</label>
+        <input type="number" id="text${i}" min="0" max="50" oninput="calcCompo(${i})" step="0.01">
+      </div>
+      <div class="field">
+        <label class="small">Eveil au milieu (/50)</label>
+        <input type="number" id="eveil${i}" min="0" max="50" oninput="calcCompo(${i})" step="0.01">
+      </div>
+      <div class="field">
+        <label class="small">Orthographe (/20)</label>
+        <input type="number" id="orth${i}" min="0" max="20" oninput="calcCompo(${i})" step="0.01">
+      </div>
+    </div>
+
+    <div class="row center">
+      <div class="field">
+        <label class="small">Total</label>
+        <div id="total${i}">0</div>
+      </div>
+      <div class="field">
+        <label class="small">Moyenne (divisé par 8.5)</label>
+        <div id="moy${i}">0.00</div>
+      </div>
+      <div class="field">
+        <label class="small">Observation</label>
+        <div id="obs${i}">-</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn add" onclick="addStudent(${i})" type="button">Ajouter</button>
+      <button class="btn export" onclick="exportPDFCompo(${i})" type="button">Export PDF</button>
+      <button class="btn export" onclick="exportExcelCompo(${i})" type="button">Export Excel</button>
+      <button class="btn next" onclick="goStep(${i})" type="button">Suivant</button>
+      <button class="btn clear" onclick="clearForm(${i})" type="button">Effacer</button>
+    </div>
+
+    <div class="note-small">La table ci-dessous contient les élèves ajoutés pour cette composition. Le rang est calculé automatiquement.</div>
+
+    <table id="tableCompo${i}">
+      <thead>
+        <tr>
+          <th>Rang</th><th>Nom</th><th>Prénom</th><th>Maths</th><th>Text</th><th>Eveil</th><th>Orth</th><th>Total</th><th>Moy</th><th>Obs</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  `;
+
+  pageContainer.appendChild(div);
+}
+
+/* ========= Page MGA ========= */
+const mgaDiv = document.createElement('div');
+mgaDiv.className = 'stepPage';
+mgaDiv.id = 'mgaPage';
+mgaDiv.innerHTML = `
+  <h2 class="center">MGA - Moyenne Générale Ajustée</h2>
+
+  <div class="row">
+    <div class="field wide">
+      <label class="small">Sélectionner élève (Nom - Prénom)</label>
+      <select id="selectStudentForMGA" onchange="prefillMGA()">
+        <option value="">-- Choisir un élève existant --</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field wide">
+      <label class="small">Nom</label>
+      <input type="text" id="nomMGA">
+    </div>
+    <div class="field wide">
+      <label class="small">Prénom</label>
+      <input type="text" id="prenomMGA">
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label class="small">Moy 1</label><div id="mga_moy1">-</div>
+    </div>
+    <div class="field">
+      <label class="small">Moy 2</label><div id="mga_moy2">-</div>
+    </div>
+    <div class="field">
+      <label class="small">Moy 3</label><div id="mga_moy3">-</div>
+    </div>
+    <div class="field">
+      <label class="small">Moy 4</label><div id="mga_moy4">-</div>
+    </div>
+  </div>
+
+  <div class="row center">
+    <div class="field">
+      <label class="small">Formule</label>
+      <div class="note-small">MGA = ((Moy1 + Moy2 + Moy3) / 3 + (Moy4 × 2)) / 3</div>
+    </div>
+    <div class="field">
+      <label class="small">MGA (résultat)</label>
+      <div id="mga_result">-</div>
+    </div>
+    <div class="field">
+      <label class="small">Observation</label>
+      <div id="mga_obs">-</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn add" onclick="computeAndAddMGA()" type="button">Ajouter à MGA</button>
+    <button class="btn export" onclick="exportPDFMGA()" type="button">Export PDF (MGA)</button>
+    <button class="btn export" onclick="exportExcelMGA()" type="button">Export Excel (MGA)</button>
+    <button class="btn clear" onclick="clearMGAForm()" type="button">Effacer</button>
+  </div>
+
+  <div class="note-small">Table MGA (rang automatique calculé sur la colonne MGA)</div>
+
+  <table id="tableMGA">
+    <thead><tr><th>Rang</th><th>Nom</th><th>Prénom</th><th>Moy1</th><th>Moy2</th><th>Moy3</th><th>Moy4</th><th>MGA</th><th>Obs</th></tr></thead>
+    <tbody></tbody>
+  </table>
+`;
+pageContainer.appendChild(mgaDiv);
+
+/* ========= Navigation ========= */
+let currentIndex = 0;
+const pages = document.querySelectorAll('.stepPage');
+function goStep(idx){
+  if(idx < 0 || idx >= pages.length) return;
+  pages[currentIndex].classList.remove('active');
+  currentIndex = idx;
+  pages[currentIndex].classList.add('active');
+  if(idx === pages.length - 1) refreshStudentSelect();
+}
+goStep(0);
+
+/* ========= Calculs de composition ========= */
+function calcCompo(i){
+  const m = parseFloat(document.getElementById('math'+i).value) || 0;
+  const t = parseFloat(document.getElementById('text'+i).value) || 0;
+  const e = parseFloat(document.getElementById('eveil'+i).value) || 0;
+  const o = parseFloat(document.getElementById('orth'+i).value) || 0;
+  const total = +(m + t + e + o).toFixed(2);
+  const moy = +(total / 8.5).toFixed(2);
+  document.getElementById('total'+i).innerText = total;
+  document.getElementById('moy'+i).innerText = moy.toFixed(2);
+  document.getElementById('obs'+i).innerText = (moy >= 10 ? 'A' : 'R');
+}
+
+/* ========= Ajouter un élève (compo) ========= */
+function addStudent(i){
+  const nom = (document.getElementById('nom'+i).value || '').trim();
+  const prenom = (document.getElementById('prenom'+i).value || '').trim();
+  if(!nom || !prenom){ alert('Remplis le nom et le prénom'); return; }
+
+  const math = parseFloat(document.getElementById('math'+i).value) || 0;
+  const text = parseFloat(document.getElementById('text'+i).value) || 0;
+  const eveil = parseFloat(document.getElementById('eveil'+i).value) || 0;
+  const orth = parseFloat(document.getElementById('orth'+i).value) || 0;
+  const total = +(math + text + eveil + orth).toFixed(2);
+  const moy = +(total / 8.5).toFixed(2);
+  const obs = (moy >= 10 ? 'A' : 'R');
+
+  // push
+  data['compo'+i].push({ nom, prenom, math, text, eveil, orth, total, moy, obs });
+
+  // recalculer rangs
+  computeRanks('compo'+i);
+
+  // refresh table
+  renderTableCompo(i);
+
+  // clear inputs (nom/prenom left if you want; here we clear grades only)
+  document.getElementById('math'+i).value = '';
+  document.getElementById('text'+i).value = '';
+  document.getElementById('eveil'+i).value = '';
+  document.getElementById('orth'+i).value = '';
+  document.getElementById('total'+i).innerText = '0';
+  document.getElementById('moy'+i).innerText = '0.00';
+  document.getElementById('obs'+i).innerText = '-';
+
+  refreshStudentSelect();
+}
+
+/* ========= Rendu table & rang automatique ========= */
+function computeRanks(key){
+  // tri décroissant par moyenne
+  data[key].sort((a,b) => b.moy - a.moy);
+  // assignation rang
+  for(let idx=0; idx<data[key].length; idx++){
+    data[key][idx].rang = idx+1;
+  }
+}
+
+function renderTableCompo(i){
+  const tbody = document.querySelector('#tableCompo'+i+' tbody');
+  tbody.innerHTML = '';
+  data['compo'+i].forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${row.rang}</td>
+                    <td>${escapeHTML(row.nom)}</td>
+                    <td>${escapeHTML(row.prenom)}</td>
+                    <td>${row.math}</td>
+                    <td>${row.text}</td>
+                    <td>${row.eveil}</td>
+                    <td>${row.orth}</td>
+                    <td>${row.total}</td>
+                    <td>${row.moy.toFixed(2)}</td>
+                    <td>${row.obs}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ========= Fonctions d'export PDF & Excel pour chaque compo ========= */
+function exportPDFCompo(i){
+  const rows = data['compo'+i].map(r => [r.rang, r.nom, r.prenom, r.math, r.text, r.eveil, r.orth, r.total, r.moy.toFixed(2), r.obs]);
+  if(rows.length===0){ alert('Aucune donnée à exporter pour cette composition.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  doc.setFontSize(14);
+  doc.text(`Composition ${i} - Table des élèves`, 40, 40);
+  doc.autoTable({
+    startY: 60,
+    head: [['Rang','Nom','Prénom','Maths','Text','Eveil','Orth','Total','Moy','Obs']],
+    body: rows,
+    styles: { font: 'helvetica', fontSize:10 },
+    headStyles: { fillColor: [255,122,0] }
+  });
+  doc.save(`composition_${i}.pdf`);
+}
+
+function exportExcelCompo(i){
+  if(data['compo'+i].length===0){ alert('Aucune donnée à exporter pour cette composition.'); return; }
+  const aoa = [['Rang','Nom','Prénom','Maths','Text','Eveil','Orth','Total','Moy','Obs']];
+  data['compo'+i].forEach(r => aoa.push([r.rang, r.nom, r.prenom, r.math, r.text, r.eveil, r.orth, r.total, r.moy.toFixed(2), r.obs]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `Compo${i}`);
+  XLSX.writeFile(wb, `composition_${i}.xlsx`);
+}
+
+/* ========= Gérer la sélection d'élève pour MGA ========= */
+function refreshStudentSelect(){
+  const sel = document.getElementById('selectStudentForMGA');
+  if(!sel) return;
+  const names = new Map(); // key = "nom||prenom" => last occurrence
+  ['compo1','compo2','compo3','compo4'].forEach(k=>{
+    data[k].forEach(r => {
+      const key = `${r.nom}||${r.prenom}`;
+      names.set(key, { nom: r.nom, prenom: r.prenom });
+    });
+  });
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">-- Choisir un élève existant --</option>';
+  names.forEach((val, key) => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = `${val.nom} - ${val.prenom}`;
+    sel.appendChild(opt);
+  });
+  if(prev) sel.value = prev;
+}
+
+/* ========= Pré-remplissage MGA selon sélection ========= */
+function prefillMGA(){
+  const sel = document.getElementById('selectStudentForMGA');
+  const v = sel.value;
+  if(!v) return clearMGAForm();
+  const [nom,prenom] = v.split('||');
+  document.getElementById('nomMGA').value = nom;
+  document.getElementById('prenomMGA').value = prenom;
+
+  // rechercher la dernière entrée pour cet élève dans chaque compo (si multiple)
+  for(let j=1;j<=4;j++){
+    const arr = data['compo'+j].slice().reverse();
+    const found = arr.find(r => r.nom === nom && r.prenom === prenom);
+    const el = document.getElementById('mga_moy'+j);
+    if(found) el.innerText = found.moy.toFixed(2);
+    else el.innerText = '-';
+  }
+  document.getElementById('mga_result').innerText = '-';
+  document.getElementById('mga_obs').innerText = '-';
+}
+
+/* ========= Calculer & ajouter MGA ========= */
+function computeAndAddMGA(){
+  const nom = (document.getElementById('nomMGA').value || '').trim();
+  const prenom = (document.getElementById('prenomMGA').value || '').trim();
+  if(!nom || !prenom){ alert('Remplis le nom et le prénom pour MGA'); return; }
+
+  const findLast = (k)=>{
+    const arr = data[k].slice().reverse();
+    return arr.find(r => r.nom===nom && r.prenom===prenom) || null;
+  };
+  const f1 = findLast('compo1');
+  const f2 = findLast('compo2');
+  const f3 = findLast('compo3');
+  const f4 = findLast('compo4');
+
+  if(!f1 || !f2 || !f3 || !f4){
+    if(!confirm('Un ou plusieurs moyennes compos manquent pour cet élève. Continuer avec les valeurs disponibles (les manquantes seront prises comme 0) ?')) return;
+  }
+  const m1 = f1 ? f1.moy : 0;
+  const m2 = f2 ? f2.moy : 0;
+  const m3 = f3 ? f3.moy : 0;
+  const m4 = f4 ? f4.moy : 0;
+
+  // MGA = ((Moy1 + Moy2 + Moy3) / 3 + (Moy4 × 2)) / 3
+  const part123 = (m1 + m2 + m3) / 3;
+  const part4 = m4 * 2;
+  const mga = +((part123 + part4) / 3).toFixed(2);
+
+  const obs = (mga >= 10 ? 'A' : 'R');
+
+  data.MGA.push({ nom, prenom, m1, m2, m3, m4, mga, obs });
+
+  // recalculer rang MGA
+  computeRanksMGA();
+  renderTableMGA();
+
+  // afficher résultats
+  document.getElementById('mga_moy1').innerText = m1 ? m1.toFixed(2) : '-';
+  document.getElementById('mga_moy2').innerText = m2 ? m2.toFixed(2) : '-';
+  document.getElementById('mga_moy3').innerText = m3 ? m3.toFixed(2) : '-';
+  document.getElementById('mga_moy4').innerText = m4 ? m4.toFixed(2) : '-';
+  document.getElementById('mga_result').innerText = mga.toFixed(2);
+  document.getElementById('mga_obs').innerText = obs;
+
+  refreshStudentSelect();
+}
+
+/* ========= Rangs & table MGA ========= */
+function computeRanksMGA(){
+  data.MGA.sort((a,b) => b.mga - a.mga);
+  for(let i=0;i<data.MGA.length;i++) data.MGA[i].rang = i+1;
+}
+
+function renderTableMGA(){
+  const tbody = document.querySelector('#tableMGA tbody');
+  tbody.innerHTML = '';
+  data.MGA.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.rang}</td>
+                    <td>${escapeHTML(r.nom)}</td>
+                    <td>${escapeHTML(r.prenom)}</td>
+                    <td>${r.m1 ? r.m1.toFixed(2) : '-'}</td>
+                    <td>${r.m2 ? r.m2.toFixed(2) : '-'}</td>
+                    <td>${r.m3 ? r.m3.toFixed(2) : '-'}</td>
+                    <td>${r.m4 ? r.m4.toFixed(2) : '-'}</td>
+                    <td>${r.mga.toFixed(2)}</td>
+                    <td>${r.obs}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ========= Export PDF & Excel MGA ========= */
+function exportPDFMGA(){
+  if(data.MGA.length===0){ alert('Aucune donnée MGA à exporter.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  doc.setFontSize(14);
+  doc.text(`MGA - Table des élèves`, 40, 40);
+  const rows = data.MGA.map(r => [r.rang, r.nom, r.prenom, r.m1 ? r.m1.toFixed(2) : '-', r.m2 ? r.m2.toFixed(2) : '-', r.m3 ? r.m3.toFixed(2) : '-', r.m4 ? r.m4.toFixed(2) : '-', r.mga.toFixed(2), r.obs]);
+  doc.autoTable({
+    startY: 60,
+    head: [['Rang','Nom','Prénom','Moy1','Moy2','Moy3','Moy4','MGA','Obs']],
+    body: rows,
+    headStyles: { fillColor:[255,122,0] }
+  });
+  doc.save('MGA_table.pdf');
+}
+
+function exportExcelMGA(){
+  if(data.MGA.length===0){ alert('Aucune donnée MGA à exporter.'); return; }
+  const aoa = [['Rang','Nom','Prénom','Moy1','Moy2','Moy3','Moy4','MGA','Obs']];
+  data.MGA.forEach(r => aoa.push([r.rang, r.nom, r.prenom, r.m1 ? r.m1.toFixed(2) : '-', r.m2 ? r.m2.toFixed(2) : '-', r.m3 ? r.m3.toFixed(2) : '-', r.m4 ? r.m4.toFixed(2) : '-', r.mga.toFixed(2), r.obs]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'MGA');
+  XLSX.writeFile(wb, 'MGA_table.xlsx');
+}
+
+/* ========= Utils ========= */
+function clearForm(i){
+  document.getElementById('nom'+i).value = '';
+  document.getElementById('prenom'+i).value = '';
+  document.getElementById('math'+i).value = '';
+  document.getElementById('text'+i).value = '';
+  document.getElementById('eveil'+i).value = '';
+  document.getElementById('orth'+i).value = '';
+  document.getElementById('total'+i).innerText = '0';
+  document.getElementById('moy'+i).innerText = '0.00';
+  document.getElementById('obs'+i).innerText = '-';
+}
+function clearMGAForm(){
+  document.getElementById('selectStudentForMGA').value = '';
+  document.getElementById('nomMGA').value = '';
+  document.getElementById('prenomMGA').value = '';
+  document.getElementById('mga_moy1').innerText = '-';
+  document.getElementById('mga_moy2').innerText = '-';
+  document.getElementById('mga_moy3').innerText = '-';
+  document.getElementById('mga_moy4').innerText = '-';
+  document.getElementById('mga_result').innerText = '-';
+  document.getElementById('mga_obs').innerText = '-';
+}
+
+/* Escape simple HTML (safety) */
+function escapeHTML(str){
+  return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+
+/* initial render tables (empty) */
+for(let i=1;i<=4;i++) renderTableCompo(i);
+renderTableMGA();
+
+</script>
+</body>
+</html>
